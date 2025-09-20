@@ -16,6 +16,7 @@ LOG_FILE="$LOG_DIR/atlantis-setup-$TIMESTAMP.log"
 
 SERVICES=(
   wan-manager
+  wan-manager.timer
   oled-status
   portal
   captive-watchdog
@@ -35,7 +36,7 @@ if [[ "$EUID" -ne 0 ]]; then
 fi
 
 # Ensure log directory exists
-mkdir -p "$LOG_DIR"
+sudo mkdir -p "$LOG_DIR"
 
 # Tee all output to log
 exec > >(tee -a "$LOG_FILE") 2>&1
@@ -104,30 +105,44 @@ else
 fi
 
 echo "=== [Atlantis] Deploying configs ==="
-mkdir -p /etc/atlantis
-cp config/hostapd.conf /etc/hostapd/hostapd.conf
-cp config/dnsmasq.conf /etc/dnsmasq.conf
-cp config/dhcpcd.conf /etc/dhcpcd.conf
+sudo mkdir -p /etc/atlantis
+sudo cp config/hostapd.conf /etc/hostapd/hostapd.conf
+sudo cp config/dnsmasq.conf /etc/dnsmasq.conf
+sudo cp config/dhcpcd.conf /etc/dhcpcd.conf
 
 echo "=== [Atlantis] Deploying scripts ==="
-cp scripts/wan-manager.sh /usr/local/bin/wan-manager.sh
-chmod +x /usr/local/bin/wan-manager.sh
-cp oled/oled-status.py /usr/local/bin/oled-status.py
-chmod +x /usr/local/bin/oled-status.py
-cp portal/portal.py /usr/local/bin/portal.py
-chmod +x /usr/local/bin/portal.py
-cp scripts/captive-watchdog.sh /usr/local/bin/captive-watchdog.sh
-chmod +x /usr/local/bin/captive-watchdog.sh
+sudo cp scripts/wan-manager.sh /usr/local/bin/wan-manager.sh
+sudo chmod +x /usr/local/bin/wan-manager.sh
+
+sudo cp scripts/choose-channel.sh /usr/local/bin/choose-channel.sh
+sudo chmod +x /usr/local/bin/choose-channel.sh
+
+sudo cp oled/oled-status.py /usr/local/bin/oled-status.py
+sudo chmod +x /usr/local/bin/oled-status.py
+
+sudo cp portal/portal.py /usr/local/bin/portal.py
+sudo chmod +x /usr/local/bin/portal.py
+
+sudo cp scripts/captive-watchdog.sh /usr/local/bin/captive-watchdog.sh
+sudo chmod +x /usr/local/bin/captive-watchdog.sh
 
 echo "=== [Atlantis] Deploying services ==="
-cp services/*.service /etc/systemd/system/
-systemctl daemon-reload
+sudo cp services/*.service /etc/systemd/system/
+sudo systemctl daemon-reload
+
+echo "=== [Atlantis] Disabling dhcpcd (using dhclient in wan-manager) ==="
+sudo systemctl stop dhcpcd || true
+sudo systemctl disable dhcpcd || true
+
+echo "=== [Atlantis] Preparing log directories ==="
+sudo mkdir -p /var/log/atlantis-history
+sudo touch /var/log/atlantis-status.log
 
 echo "=== [Atlantis] Enabling & starting services ==="
 FAILED_SERVICES=()
 for svc in "${SERVICES[@]}"; do
-    systemctl enable "$svc" || true
-    systemctl restart "$svc" || true
+    sudo systemctl enable "$svc" || true
+    sudo systemctl restart "$svc" || true
     if systemctl is-active --quiet "$svc"; then
         echo "[OK] $svc is running"
     else
@@ -151,7 +166,7 @@ else
     read -rp "Reboot now? (y/n): " do_reboot
     if [[ "$do_reboot" =~ ^[Yy]$ ]]; then
         echo "Rebooting..."
-        reboot
+        sudo reboot
     fi
 fi
 
