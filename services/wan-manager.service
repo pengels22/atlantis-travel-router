@@ -1,15 +1,11 @@
 [Unit]
-Description=Atlantis WAN/LAN Manager
+Description=Atlantis Travel Router WAN/LAN Manager
 After=network.target
-Wants=network-online.target
 
 [Service]
+Type=oneshot
 ExecStart=/usr/local/bin/wan-manager.sh
-Restart=always
-RestartSec=5
-StandardOutput=syslog
-StandardError=syslog
-SyslogIdentifier=wan-manager
+RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target

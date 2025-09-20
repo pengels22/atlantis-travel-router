@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Atlantis WAN Manager every 30s until WAN is found
+
+[Timer]
+OnBootSec=15s
+OnUnitActiveSec=30s
+Unit=wan-manager.service
+
+[Install]
+WantedBy=timers.target

@@ -1,19 +1,52 @@
 #!/bin/bash
 # Atlantis Router Setup Script
-# Installs dependencies, deploys configs, enables services.
-# Run this as root:  sudo ./setup.sh
+# Fully standalone – wget and run directly
+# Handles repo clone/update, dependency install, service setup.
+# Supports --dev mode to skip Pi-hole + Tailscale installs
+# Logs everything to /var/log/atlantis-setup-<timestamp>.log
 
 set -euo pipefail
 
+REPO_URL="https://github.com/pengels22/atlantis-travel-router.git"
+REPO_DIR="$HOME/atlantis-travel-router"
+
+LOG_DIR="/var/log"
+TIMESTAMP=$(date +"%Y%m%d-%H%M")
+LOG_FILE="$LOG_DIR/atlantis-setup-$TIMESTAMP.log"
+
+SERVICES=(
+  wan-manager
+  oled-status
+  portal
+  captive-watchdog
+  hostapd
+  dnsmasq
+)
+
+DEV_MODE=false
+if [[ "${1:-}" == "--dev" ]]; then
+    DEV_MODE=true
+    echo "=== [Atlantis] Running in DEV MODE (skipping Pi-hole + Tailscale) ==="
+fi
+
 if [[ "$EUID" -ne 0 ]]; then
-    echo "Please run as root (sudo ./setup.sh)"
+    echo "Please run as root: sudo ./setup.sh [--dev]"
     exit 1
 fi
+
+# Ensure log directory exists
+mkdir -p "$LOG_DIR"
+
+# Tee all output to log
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+echo "=== [Atlantis] Setup started at $(date) ==="
+echo "Logging to $LOG_FILE"
 
 echo "=== [Atlantis] Updating system packages ==="
 apt update && apt upgrade -y
 
-echo "=== [Atlantis] Installing core dependencies ==="
+echo "=== [Atlantis] Installing dependencies ==="
 apt install -y \
     hostapd \
     dnsmasq \
@@ -45,41 +78,82 @@ pip3 install --break-system-packages \
     luma.oled \
     flask
 
-echo "=== [Atlantis] Installing Tailscale ==="
-curl -fsSL https://tailscale.com/install.sh | sh || {
-    echo "[Atlantis] ERROR: Tailscale install failed."
-    exit 1
-}
+if [ "$DEV_MODE" = false ]; then
+    echo "=== [Atlantis] Installing Tailscale ==="
+    curl -fsSL https://tailscale.com/install.sh | sh || {
+        echo "[Atlantis] ERROR: Tailscale install failed."
+        exit 1
+    }
 
-echo "=== [Atlantis] Installing Pi-hole (unattended) ==="
-curl -sSL https://install.pi-hole.net | bash /dev/stdin --unattended || {
-    echo "[Atlantis] ERROR: Pi-hole install failed."
-    exit 1
-}
+    echo "=== [Atlantis] Installing Pi-hole (unattended) ==="
+    curl -sSL https://install.pi-hole.net | bash /dev/stdin --unattended || {
+        echo "[Atlantis] ERROR: Pi-hole install failed."
+        exit 1
+    }
+else
+    echo "=== [Atlantis] Skipping Tailscale + Pi-hole installs (DEV MODE) ==="
+fi
+
+echo "=== [Atlantis] Cloning/Updating repo ==="
+if [ -d "$REPO_DIR" ]; then
+    cd "$REPO_DIR"
+    git pull
+else
+    git clone "$REPO_URL" "$REPO_DIR"
+    cd "$REPO_DIR"
+fi
 
 echo "=== [Atlantis] Deploying configs ==="
 mkdir -p /etc/atlantis
-cp ../config/hostapd.conf /etc/hostapd/hostapd.conf
-cp ../config/dnsmasq.conf /etc/dnsmasq.conf
-cp ../config/dhcpcd.conf /etc/dhcpcd.conf
+cp config/hostapd.conf /etc/hostapd/hostapd.conf
+cp config/dnsmasq.conf /etc/dnsmasq.conf
+cp config/dhcpcd.conf /etc/dhcpcd.conf
 
 echo "=== [Atlantis] Deploying scripts ==="
-cp wan-manager.sh /usr/local/bin/wan-manager.sh
+cp scripts/wan-manager.sh /usr/local/bin/wan-manager.sh
 chmod +x /usr/local/bin/wan-manager.sh
-
-echo "=== [Atlantis] Deploying OLED + Portal ==="
-cp ../oled/oled-status.py /usr/local/bin/oled-status.py
+cp oled/oled-status.py /usr/local/bin/oled-status.py
 chmod +x /usr/local/bin/oled-status.py
-cp ../portal/portal.py /usr/local/bin/portal.py
+cp portal/portal.py /usr/local/bin/portal.py
 chmod +x /usr/local/bin/portal.py
+cp scripts/captive-watchdog.sh /usr/local/bin/captive-watchdog.sh
+chmod +x /usr/local/bin/captive-watchdog.sh
 
 echo "=== [Atlantis] Deploying services ==="
-cp ../services/*.service /etc/systemd/system/
+cp services/*.service /etc/systemd/system/
 systemctl daemon-reload
 
-echo "=== [Atlantis] Enabling services ==="
-systemctl enable hostapd dnsmasq wan-manager oled-status
-systemctl start hostapd dnsmasq wan-manager oled-status
+echo "=== [Atlantis] Enabling & starting services ==="
+FAILED_SERVICES=()
+for svc in "${SERVICES[@]}"; do
+    systemctl enable "$svc" || true
+    systemctl restart "$svc" || true
+    if systemctl is-active --quiet "$svc"; then
+        echo "[OK] $svc is running"
+    else
+        echo "[ERROR] $svc is NOT running"
+        FAILED_SERVICES+=("$svc")
+    fi
+done
 
-echo "=== [Atlantis] Setup complete! ==="
-echo "Reboot is strongly recommended: sudo reboot"
+if [ ${#FAILED_SERVICES[@]} -gt 0 ]; then
+    echo "=== [Atlantis] Some services failed: ${FAILED_SERVICES[*]} ==="
+    read -rp "Would you like to view logs for these services? (y/n): " show_logs
+    if [[ "$show_logs" =~ ^[Yy]$ ]]; then
+        for svc in "${FAILED_SERVICES[@]}"; do
+            echo "--- Logs for $svc ---"
+            journalctl -u "$svc" -n 20 --no-pager || true
+            echo "----------------------"
+        done
+    fi
+else
+    echo "=== [Atlantis] All services running successfully ==="
+    read -rp "Reboot now? (y/n): " do_reboot
+    if [[ "$do_reboot" =~ ^[Yy]$ ]]; then
+        echo "Rebooting..."
+        reboot
+    fi
+fi
+
+echo "=== [Atlantis] Setup finished at $(date) ==="
+echo "Log saved to $LOG_FILE"
