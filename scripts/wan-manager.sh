@@ -62,6 +62,9 @@ if [ "$WAN" != "none" ]; then
     iptables -A FORWARD -i br0 -o $WAN -j ACCEPT
     iptables -A FORWARD -i $WAN -o br0 -m state --state RELATED,ESTABLISHED -j ACCEPT
 fi
+# Redirect all DNS (UDP/TCP port 53) from 192.168.1.8 → 192.168.1.1
+iptables -t nat -A PREROUTING -d 192.168.1.8 -p udp --dport 53 -j DNAT --to-destination 192.168.1.1
+iptables -t nat -A PREROUTING -d 192.168.1.8 -p tcp --dport 53 -j DNAT --to-destination 192.168.1.1
 
 # Save for OLED
 echo "$WAN" > /tmp/atlantis-wan
