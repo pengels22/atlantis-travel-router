@@ -1,0 +1,15 @@
+[Unit]
+Description=Atlantis WAN/LAN Manager
+After=network.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/wan-manager.sh
+Restart=always
+RestartSec=5
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=wan-manager
+
+[Install]
+WantedBy=multi-user.target

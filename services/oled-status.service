@@ -1,0 +1,15 @@
+[Unit]
+Description=Atlantis OLED Status Display
+After=network.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/bin/oled-status.py
+Restart=always
+RestartSec=5
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=oled-status
+
+[Install]
+WantedBy=multi-user.target
