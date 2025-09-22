@@ -1,5 +1,5 @@
 #!/bin/bash
-# Atlantis Router Setup Script (Unattended)
+# Atlantis Router Setup Script (Unattended with Lock Wait)
 # Handles repo clone/update, dependency install, service setup.
 # Supports --dev mode to skip Pi-hole + Tailscale installs
 # Logs everything to /var/log/atlantis-setup-<timestamp>.log
@@ -40,11 +40,23 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 echo "=== [Atlantis] Setup started at $(date) ==="
 echo "Logging to $LOG_FILE"
 
+# --- Lock Wait Function ---
+wait_for_lock() {
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
+          fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+        echo "[Atlantis] Another apt/dpkg process is running... waiting 5s..."
+        sleep 5
+    done
+}
+
 echo "=== [Atlantis] Updating system packages ==="
+wait_for_lock
 apt-get update
+wait_for_lock
 apt-get -o Dpkg::Options::="--force-confold" upgrade -y
 
 echo "=== [Atlantis] Installing dependencies ==="
+wait_for_lock
 apt-get install -y \
     hostapd \
     dnsmasq \
