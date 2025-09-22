@@ -44,8 +44,7 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 echo "=== [Atlantis] Setup started at $(date) ==="
 echo "Logging to $LOG_FILE"
 
-echo "=== [Atlantis] Updating system packages ==="
-apt update && apt upgrade -y
+
 
 echo "=== [Atlantis] Installing dependencies ==="
 apt install -y \
