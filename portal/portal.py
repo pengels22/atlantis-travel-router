@@ -5,6 +5,7 @@
 
 from flask import Flask, request, render_template_string, redirect, url_for, session
 import os
+import subprocess
 
 app = Flask(__name__)
 app.secret_key = "atlantis_secret_key"  # Change if you want
@@ -31,6 +32,7 @@ config_page = """
   <li><a href="{{ url_for('wifi') }}">Wi-Fi Setup</a></li>
   <li><a href="{{ url_for('tailscale') }}">Tailscale</a></li>
   <li><a href="{{ url_for('pihole') }}">Pi-hole</a></li>
+  <li><a href="{{ url_for('captive') }}">Captive Portal Check</a></li>
 </ul>
 """
 
@@ -84,7 +86,24 @@ def tailscale():
 def pihole():
     if not session.get("auth"):
         return redirect(url_for("login"))
-    return "<p>Pi-hole is active at <a href='http://192.168.1.1/admin'>192.168.1.1/admin</a></p>"
+    return "<p>Pi-hole is active at <a href='http://10.0.0.1/admin'>10.0.0.1/admin</a></p>"
+
+@app.route("/captive")
+def captive():
+    if not session.get("auth"):
+        return redirect(url_for("login"))
+    try:
+        result = subprocess.check_output(
+            ["curl", "-I", "-L", "-s", "-o", "/dev/null", "-w", "%{url_effective}",
+             "http://clients3.google.com/generate_204"],
+            text=True
+        ).strip()
+        if "generate_204" in result:
+            return "<p>✅ Internet is already working!</p>"
+        else:
+            return f"<p>⚠️ Captive portal detected. <a href='{result}' target='_blank'>Click here to log in</a></p>"
+    except Exception as e:
+        return f"<p>Error checking captive portal: {e}</p>"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=80)
