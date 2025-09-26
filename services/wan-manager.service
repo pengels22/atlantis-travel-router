@@ -1,8 +1,0 @@
-[Unit]
-Description=Atlantis Travel Router WAN/LAN Manager
-After=network.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/wan-manager.sh
-RemainAfterExit=no
