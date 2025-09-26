@@ -1,0 +1,16 @@
+[Unit]
+Description=Travel Router Flask + OLED Service
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/pi/travel_router.py
+WorkingDirectory=/home/pi
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+User=pi
+Group=pi
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
